@@ -10,10 +10,10 @@ on:
       k8s_namespace:
         description: Namespace do Kubernetes
         required: true
-        default: "devops-satc"
+        default: "satc-devops"
 
 env:
-  IMAGE_NAME: satc-devops
+  IMAGE_NAME: thiago-almeida-devops
 
 jobs:
   deploy:
@@ -22,14 +22,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Load project variables
+        run: grep -v '^#' config/variables.env | grep -v '^$' >> "$GITHUB_ENV"
+
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
 
-      - name: Configure Kubernetes context
-        run: |
-          mkdir -p "$HOME/.kube"
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          cluster_name: ${{ env.GKE_CLUSTER_NAME }}
+          location: ${{ env.GKE_CLUSTER_LOCATION }}
 
       - name: Render manifests
         env:
@@ -41,7 +50,10 @@ jobs:
           ./k8s/render.sh
 
       - name: Apply stable stack
+        env:
+          NAMESPACE: ${{ inputs.k8s_namespace }}
         run: |
+          kubectl apply -f k8s/rendered/namespace.yaml
           kubectl apply -f k8s/rendered/canary/deployment-stable.yaml
           kubectl apply -f k8s/rendered/canary/service-stable.yaml
           kubectl apply -f k8s/rendered/canary/ingress-stable.yaml
@@ -55,7 +67,7 @@ jobs:
           kubectl apply -f k8s/rendered/canary/service-canary.yaml
           kubectl apply -f k8s/rendered/canary/ingress-canary.yaml
           kubectl set image deployment/app-satc-canary \
-            satc-devops=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }} \
+            thiago-almeida-devops=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }} \
             -n "${NAMESPACE}"
           kubectl rollout status deployment/app-satc-canary -n "${NAMESPACE}" --timeout=3m
 
@@ -68,7 +80,7 @@ jobs:
           NAMESPACE: ${{ inputs.k8s_namespace }}
         run: |
           kubectl set image deployment/app-satc \
-            satc-devops=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }} \
+            thiago-almeida-devops=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }} \
             -n "${NAMESPACE}"
           kubectl rollout status deployment/app-satc -n "${NAMESPACE}" --timeout=5m
           kubectl delete ingress app-satc-ingress-canary -n "${NAMESPACE}" --ignore-not-found

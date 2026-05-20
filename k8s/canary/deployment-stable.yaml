@@ -24,7 +24,7 @@ spec:
         track: stable
     spec:
       containers:
-        - name: satc-devops
+        - name: thiago-almeida-devops
           image: ##DOCKER_IMAGE##
           ports:
             - containerPort: 80

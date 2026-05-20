@@ -1,6 +1,8 @@
-# DevOps e SRE
+# thiago-almeida-devops
 
 Repositório de estudos e práticas em **DevOps** e **SRE** (Site Reliability Engineering).
+
+GitHub: `thiago-almeida-devops`
 
 ---
 
@@ -12,6 +14,7 @@ Repositório de estudos e práticas em **DevOps** e **SRE** (Site Reliability En
 - [DevOps x SRE](#devops-x-sre)
 - [Projetos no repositório](#projetos-no-repositório)
 - [Kubernetes](#kubernetes)
+- [Variáveis GCP / GKE](#variáveis-gcp--gke)
 
 ---
 
@@ -79,7 +82,7 @@ Manifests para as aulas de **HPA** (Aula 10) e **Deploys / Probes** (Aula 11): R
 - Cluster Kubernetes com `kubectl` configurado
 - [Metrics Server](https://github.com/kubernetes-sigs/metrics-server) (obrigatório para o HPA por CPU)
 - [NGINX Ingress Controller](https://kubernetes.github.io/ingress-nginx/) (apenas para a estratégia Canary)
-- Imagem publicada no Docker Hub (`satc-devops`, via workflow `docker_check.yml`)
+- Imagem publicada no Docker Hub (`thiago-almeida-devops`, via workflow `docker_check.yml`)
 
 ### Estrutura
 
@@ -98,11 +101,12 @@ k8s/
 Substitua os placeholders `##K8S_NAMESPACE##`, `##DOCKER_IMAGE##` e `##APP_HOST##`:
 
 ```bash
-export NAMESPACE=devops-satc
-export DOCKER_IMAGE=seu-usuario/satc-devops:0.0.2
+source config/variables.env
+export DOCKER_IMAGE=seu-usuario/thiago-almeida-devops:0.0.2
 export APP_HOST=gremio.local
-chmod +x k8s/render.sh
+chmod +x k8s/render.sh k8s/gke-connect.sh
 ./k8s/render.sh
+./k8s/gke-connect.sh
 kubectl apply -f k8s/rendered/
 ```
 
@@ -123,7 +127,7 @@ kubectl apply --dry-run=client -f k8s/rendered/
 **Blue-Green** — virar tráfego manualmente:
 
 ```bash
-kubectl patch service app-satc-traffic-router -n devops-satc \
+kubectl patch service app-satc-traffic-router -n satc-devops \
   -p '{"spec":{"selector":{"app":"satc","version":"green"}}}'
 ```
 
@@ -158,24 +162,40 @@ kubectl apply -f k8s/rendered/hpa.yaml
 ### Testar HPA
 
 ```bash
-kubectl get hpa -n devops-satc
-kubectl describe hpa app-satc-hpa -n devops-satc
-kubectl top pods -n devops-satc
+kubectl get hpa -n satc-devops
+kubectl describe hpa app-satc-hpa -n satc-devops
+kubectl top pods -n satc-devops
 ```
 
 Gerar carga para forçar scale up (job opcional):
 
 ```bash
 kubectl apply -f k8s/rendered/load-test/cpu-load-job.yaml
-kubectl get hpa -n devops-satc -w
+kubectl get hpa -n satc-devops -w
 ```
+
+---
+
+## Variáveis GCP / GKE
+
+Definidas em [`config/variables.env`](config/variables.env):
+
+| Variável | Valor |
+|----------|-------|
+| `GCP_PROJECT_ID` | `project-b2a6f725-ff7b-4b80-b72` |
+| `GCP_PROJECT_NUMBER` | `163992060318` |
+| `GKE_CLUSTER_LOCATION` | `us-central1-a` |
+| `GKE_CLUSTER_NAME` | `cluster-satc-devops` |
+| `K8S_NAMESPACE` | `satc-devops` |
+
+Detalhes em [`config/README.md`](config/README.md).
 
 ### Secrets do GitHub Actions (deploy)
 
 | Secret | Uso |
 |--------|-----|
-| `KUBE_CONFIG` | Kubeconfig do cluster em base64 |
+| `GCP_SA_KEY` | JSON da service account GCP (acesso ao GKE) |
 | `DOCKER_USERNAME` | Usuário Docker Hub (já usado no CI) |
 | `DOCKER_PASSWORD` | Senha/token Docker Hub |
 
-Os workflows de deploy usam `workflow_dispatch` até o cluster estar configurado.
+Os workflows de deploy usam `workflow_dispatch` e autenticam no cluster via GKE.
