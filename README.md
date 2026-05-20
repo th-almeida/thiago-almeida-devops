@@ -178,7 +178,9 @@ kubectl get hpa -n satc-devops -w
 
 ## Variáveis GCP / GKE
 
-Definidas em [`config/variables.env`](config/variables.env):
+**No GitHub (CI):** Settings → Secrets and variables → Actions → **Variables** (fonte usada pelos workflows via `vars.*`).
+
+**Local:** copie os mesmos valores em [`config/variables.env`](config/variables.env).
 
 | Variável | Valor |
 |----------|-------|
@@ -198,4 +200,4 @@ Detalhes em [`config/README.md`](config/README.md).
 | `DOCKER_USERNAME` | Usuário Docker Hub (já usado no CI) |
 | `DOCKER_PASSWORD` | Senha/token Docker Hub |
 
-Os workflows de deploy usam `workflow_dispatch` e autenticam no cluster via GKE.
+Os workflows de deploy usam `workflow_dispatch`, leem as **Repository Variables** do GitHub (`vars.GCP_PROJECT_ID`, `vars.K8S_NAMESPACE`, etc.) e autenticam no GKE.

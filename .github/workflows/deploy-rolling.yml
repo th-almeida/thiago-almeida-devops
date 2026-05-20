@@ -7,13 +7,14 @@ on:
         description: Tag da imagem Docker (ex. 0.0.2 ou SHA do commit)
         required: true
         default: "0.0.2"
-      k8s_namespace:
-        description: Namespace do Kubernetes
-        required: true
-        default: "satc-devops"
 
 env:
   IMAGE_NAME: thiago-almeida-devops
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_PROJECT_NUMBER: ${{ vars.GCP_PROJECT_NUMBER }}
+  GKE_CLUSTER_LOCATION: ${{ vars.GKE_CLUSTER_LOCATION }}
+  GKE_CLUSTER_NAME: ${{ vars.GKE_CLUSTER_NAME }}
+  K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
 
 jobs:
   deploy:
@@ -21,9 +22,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Load project variables
-        run: grep -v '^#' config/variables.env | grep -v '^$' >> "$GITHUB_ENV"
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
@@ -36,13 +34,13 @@ jobs:
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-          cluster_name: ${{ env.GKE_CLUSTER_NAME }}
-          location: ${{ env.GKE_CLUSTER_LOCATION }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          cluster_name: ${{ vars.GKE_CLUSTER_NAME }}
+          location: ${{ vars.GKE_CLUSTER_LOCATION }}
 
       - name: Render manifests
         env:
-          NAMESPACE: ${{ inputs.k8s_namespace }}
+          NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
           APP_HOST: gremio.local
         run: |
@@ -58,24 +56,18 @@ jobs:
 
       - name: Deploy image
         id: deploy_step
-        env:
-          NAMESPACE: ${{ inputs.k8s_namespace }}
         run: |
           kubectl set image deployment/app-satc \
             thiago-almeida-devops=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }} \
-            -n "${NAMESPACE}"
+            -n "${{ vars.K8S_NAMESPACE }}"
 
       - name: Monitor rollout
         id: monitor
-        env:
-          NAMESPACE: ${{ inputs.k8s_namespace }}
         run: |
-          kubectl rollout status deployment/app-satc -n "${NAMESPACE}" --timeout=5m
+          kubectl rollout status deployment/app-satc -n "${{ vars.K8S_NAMESPACE }}" --timeout=5m
 
       - name: Auto rollback on failure
         if: failure() && steps.deploy_step.outcome == 'success'
-        env:
-          NAMESPACE: ${{ inputs.k8s_namespace }}
         run: |
           echo "Deploy falhou! Executando rollback..."
-          kubectl rollout undo deployment/app-satc -n "${NAMESPACE}"
+          kubectl rollout undo deployment/app-satc -n "${{ vars.K8S_NAMESPACE }}"

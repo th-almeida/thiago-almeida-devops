@@ -7,10 +7,6 @@ on:
         description: Tag da imagem Docker para o canary
         required: true
         default: "0.0.2"
-      k8s_namespace:
-        description: Namespace do Kubernetes
-        required: true
-        default: "satc-devops"
 
 env:
   IMAGE_NAME: thiago-almeida-devops
@@ -21,9 +17,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Load project variables
-        run: grep -v '^#' config/variables.env | grep -v '^$' >> "$GITHUB_ENV"
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
@@ -36,13 +29,13 @@ jobs:
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-          cluster_name: ${{ env.GKE_CLUSTER_NAME }}
-          location: ${{ env.GKE_CLUSTER_LOCATION }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          cluster_name: ${{ vars.GKE_CLUSTER_NAME }}
+          location: ${{ vars.GKE_CLUSTER_LOCATION }}
 
       - name: Render manifests
         env:
-          NAMESPACE: ${{ inputs.k8s_namespace }}
+          NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
           APP_HOST: gremio.local
         run: |
@@ -50,8 +43,6 @@ jobs:
           ./k8s/render.sh
 
       - name: Apply stable stack
-        env:
-          NAMESPACE: ${{ inputs.k8s_namespace }}
         run: |
           kubectl apply -f k8s/rendered/namespace.yaml
           kubectl apply -f k8s/rendered/canary/deployment-stable.yaml
@@ -60,38 +51,32 @@ jobs:
 
       - name: Deploy Canary (10% traffic)
         id: deploy_canary
-        env:
-          NAMESPACE: ${{ inputs.k8s_namespace }}
         run: |
           kubectl apply -f k8s/rendered/canary/deployment-canary.yaml
           kubectl apply -f k8s/rendered/canary/service-canary.yaml
           kubectl apply -f k8s/rendered/canary/ingress-canary.yaml
           kubectl set image deployment/app-satc-canary \
             thiago-almeida-devops=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }} \
-            -n "${NAMESPACE}"
-          kubectl rollout status deployment/app-satc-canary -n "${NAMESPACE}" --timeout=3m
+            -n "${{ vars.K8S_NAMESPACE }}"
+          kubectl rollout status deployment/app-satc-canary -n "${{ vars.K8S_NAMESPACE }}" --timeout=3m
 
       - name: Wait and analyze metrics
         run: sleep 60
 
       - name: Promote Canary to 100%
         if: success()
-        env:
-          NAMESPACE: ${{ inputs.k8s_namespace }}
         run: |
           kubectl set image deployment/app-satc \
             thiago-almeida-devops=${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }} \
-            -n "${NAMESPACE}"
-          kubectl rollout status deployment/app-satc -n "${NAMESPACE}" --timeout=5m
-          kubectl delete ingress app-satc-ingress-canary -n "${NAMESPACE}" --ignore-not-found
-          kubectl delete deployment app-satc-canary -n "${NAMESPACE}" --ignore-not-found
-          kubectl delete service app-satc-canary -n "${NAMESPACE}" --ignore-not-found
+            -n "${{ vars.K8S_NAMESPACE }}"
+          kubectl rollout status deployment/app-satc -n "${{ vars.K8S_NAMESPACE }}" --timeout=5m
+          kubectl delete ingress app-satc-ingress-canary -n "${{ vars.K8S_NAMESPACE }}" --ignore-not-found
+          kubectl delete deployment app-satc-canary -n "${{ vars.K8S_NAMESPACE }}" --ignore-not-found
+          kubectl delete service app-satc-canary -n "${{ vars.K8S_NAMESPACE }}" --ignore-not-found
 
       - name: Remove Canary on failure
         if: failure()
-        env:
-          NAMESPACE: ${{ inputs.k8s_namespace }}
         run: |
-          kubectl delete ingress app-satc-ingress-canary -n "${NAMESPACE}" --ignore-not-found
-          kubectl delete deployment app-satc-canary -n "${NAMESPACE}" --ignore-not-found
-          kubectl delete service app-satc-canary -n "${NAMESPACE}" --ignore-not-found
+          kubectl delete ingress app-satc-ingress-canary -n "${{ vars.K8S_NAMESPACE }}" --ignore-not-found
+          kubectl delete deployment app-satc-canary -n "${{ vars.K8S_NAMESPACE }}" --ignore-not-found
+          kubectl delete service app-satc-canary -n "${{ vars.K8S_NAMESPACE }}" --ignore-not-found
